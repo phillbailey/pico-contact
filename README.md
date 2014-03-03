@@ -8,17 +8,23 @@ This is a simple contact form for your Pico-project.
 [Running example](http://gidlov.com/contact)
 
 ##Setup
-We use the nice [PHPMailer](https://github.com/PHPMailer/PHPMailer) class in this plugin, so we have to update the `require` key of `composer.json` and add the following:
+We use the nice [Mandrill](http://mandrill.com) app in this plugin, which is free for up to 12,000 sends per month.
+Mandrill is delivered via Composer so we have to update the `require` key of `composer.json` and add the following:
 
-	"phpmailer/phpmailer": "dev-master"
+	"mandrill/mandrill": "1.0.*"
 
 Run the `composer update` comand.
+
+If you are receiving about Pico being redeclared, comment out (//) the following line in Pico's index.php:
+
+        require(LIB_DIR .'pico.php');
 
 Now open your `config.php` file and add insert this:
 
 	$config['contact'] = array(
 		'post' => $_POST,
 		'send_to' => 'your_email',
+                'mandrill_api_key' => 'your_mandrill_api_key'
 	);
 
 Create a contact.md page (or whatever you want to call it) and insert your contact form there, like this:
@@ -97,5 +103,3 @@ A custom form input validation error class:
 ##License
 
 Contact is released under [LGPL](http://www.gnu.org/licenses/lgpl-3.0-standalone.html).
-
-[![githalytics.com alpha](https://cruel-carlota.pagodabox.com/d4202e8837e5db4295030cbd3984e615 "githalytics.com")](http://githalytics.com/gidlov/pico-contact)
