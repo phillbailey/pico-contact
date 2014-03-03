@@ -1,7 +1,8 @@
-<?php use \PHPMailer;
+<?php use \Mandrill;
 
 /**
- * Simple contact form for the micro CMS Pico.
+ * Simple contact form using the Mandrill API for the micro CMS Pico.
+ * Based on the work done by Klas Gidlöv (http://gidlov.com/code)
  *
  * @author Klas Gidlöv
  * @link http://gidlov.com/code/
@@ -16,6 +17,7 @@ class Contact {
 	private $message;
 	private $error;
 	private $post;
+	private $result;
 
 	public function config_loaded(&$settings) {
 		// Missing config settings.
@@ -40,45 +42,44 @@ class Contact {
 				}
 			}
 		}
-		// No validation validation, proceed sending the email.
+		// No validation failures, proceed sending the email.
 		if (count($this->validation) == 0) {
-			$mail = new \PHPMailer;
-			if (isset($this->contact['smtp'])) {
-				$mail->isSMTP();
-				$mail->Host = $this->contact['smtp']['host'] ? $this->contact['smtp']['host'] : '';
-				$mail->SMTPAuth = $this->contact['smtp']['auth'] ? $this->contact['smtp']['auth'] : '';
-				$mail->Username = $this->contact['smtp']['username'] ? $this->contact['smtp']['username'] : '';
-				$mail->Password = $this->contact['smtp']['password'] ? $this->contact['smtp']['password'] : '';
-				$mail->SMTPSecure = $this->contact['smtp']['encryption'] ? $this->contact['smtp']['encryption'] : '';
-				$mail->Port = $this->contact['smtp']['port'] ? $this->contact['smtp']['port'] : '';
-			}
-			$mail->CharSet = "UTF-8";
-			$mail->FromName = $this->post['name'];
-			$mail->From = $this->post['mail'];
-			$mail->addAddress($this->contact['send_to']);
-			$subject = isset($this->post['subject']) ? $this->post['subject'] : '';
-			$args = array($this->post['name'], $this->post['mail'], $subject, $settings['site_title'], $settings['base_url']);
-			$header = isset($this->contact['body_header']) ? vsprintf($this->contact['body_header'], $args) : '';
-			$footer = isset($this->contact['body_footer']) ? vsprintf($this->contact['body_footer'], $args) : '';
-			if (isset($this->contact['subject'])) {
-				$mail->Subject = vsprintf($this->contact['subject'], $args);
-			} elseif ($subject != '') {
-				$mail->Subject = $this->post['subject'];
-			}
-			$mail->Body = $header.$this->post['message'].$footer;
-			
-			if(!$mail->send()) {
-				// Try to use SMTP if you'll get here.
-				$this->error = isset($mail->validationInfo) ? $mail->validationInfo : 'Unknown mailing error.';
-			} else {
+			try {
+				$mandrill = new Mandrill($this->contact['mandrill_api_key']);
+				$args = array($this->post['name'], $this->post['mail'], $subject, $settings['site_title'], $settings['base_url']);
+				if (isset($this->contact['subject'])) {
+					$subject = vsprintf($this->contact['subject'], $args);
+				} elseif ($this->post['subject'] != '') {
+					$subject = $this->post['subject'];
+				}
+				$header = isset($this->contact['body_header']) ? vsprintf($this->contact['body_header'], $args) : '';
+				$footer = isset($this->contact['body_footer']) ? vsprintf($this->contact['body_footer'], $args) : '';
+				$message = array(
+					'text' => $header.$this->post['message'].$footer,
+					'subject' => $subject,
+					'from_email' => $this->post['mail'],
+					'from_name' => $this->post['name'],
+					'to' => array(
+						array(
+							'email' => $this->contact['send_to'],
+						)
+					)
+				);
+				$async = false;
+				$this->result = $mandrill->messages->send($message, $async);
+				// This is not run if an error is caught
 				$this->post = false;
 				$this->message = true;
+			} catch(Mandrill_Error $e) {
+				// Mandrill errors are thrown as exceptions
+				$this->error = 'A mandrill error occurred: ' . get_class($e) . ' - ' . $e->getMessage();
+				// A mandrill error occurred: Mandrill_Unknown_Subaccount - No subaccount exists with the id 'customer-123'
 			}
 		}
 	}
 
 	public function content_parsed(&$content) {
-		// Show validation failiurs.
+		// Show validation failures
 		if (isset($this->validation)) {
 			$validation = '';
 				foreach ($this->validation as $section => $value) {
@@ -114,4 +115,8 @@ class Contact {
 		}
 	}
 
+	/*public function after_render(&$output)
+	{
+		$output = $output . "<pre style=\"background-color:white;\">".htmlentities(print_r($this,1))."</pre>";
+	}*/
 }
