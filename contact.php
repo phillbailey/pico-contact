@@ -18,23 +18,44 @@ class Contact {
 	private $error;
 	private $post;
 	private $result;
+	private $replacement;
+	private $recaptcha;
+	private $response;
 
 	public function config_loaded(&$settings) {
 		// Missing config settings.
 		if (empty($settings['contact']))
 			return;
+		if((isset($settings['contact']['recaptcha_private_key'])) && (isset($settings['contact']['recaptcha_public_key']))) {
+			require_once('recaptcha/recaptchalib.php');
+			$this->recaptcha = array('public' => $settings['contact']['recaptcha_public_key'], 'private' => $settings['contact']['recaptcha_private_key']);
+		}
 		// No post request.
 		if (empty($settings['contact']['post']))
 			return;
+		
 		$this->contact = $settings['contact'];
 		$this->post = $settings['contact']['post'];
 
 		// Post to this form was made.
+		if((isset($settings['contact']['recaptcha_private_key'])) && (isset($settings['contact']['recaptcha_public_key']))) {
+			$this->response = recaptcha_check_answer($this->recaptcha['private'],
+								$_SERVER["REMOTE_ADDR"],
+								$this->post["recaptcha_challenge_field"],
+								$this->post["recaptcha_response_field"]);
+			
+			if (!$this->response->is_valid) {
+				// What happens when the CAPTCHA was entered incorrectly
+				$value = "reCAPTCHA";
+				$this->validation[$value] = isset($this->contact['validation_messages']['required']) ? sprintf($this->contact['validation_messages']['required'], $value) : "The {$value} wasn't entered correctly. Go back and try it again. " . "<br />({$value} said: " . $this->response->error . ")";
+			}
+		}
+		
 		if (isset($this->post['contact']) AND $this->post['contact'] == 'true') {
 			foreach (array('name', 'mail', 'message') as $value) {
 				if ($value == 'mail') {
 					if (filter_var($this->post['mail'], FILTER_VALIDATE_EMAIL) === false) {
-						$this->validation[$value] = isset($this->contact['validation_messages']['invalid_mail']) ? sprintf($this->contact['validation_messages']['invalid_mail'], $value) : "A valid {$value} i required.";;
+						$this->validation[$value] = isset($this->contact['validation_messages']['invalid_mail']) ? sprintf($this->contact['validation_messages']['invalid_mail'], $value) : "A valid {$value} is required.";;
 					}
 				}
 				if (empty($this->post[$value])) {
@@ -115,8 +136,19 @@ class Contact {
 		}
 	}
 
+	public function before_parse_content(&$content)
+	{
+		if(property_exists('Contact', 'recaptcha')) {
+			$this->replacement = recaptcha_get_html($this->recaptcha['public']);
+		} else {
+			$this->replacement = "";
+		}
+		$content = str_replace('%recaptcha%', $this->replacement, $content);
+	}
+	
 	/*public function after_render(&$output)
 	{
+		$this->recaptcha = md5($this->recaptcha);
 		$output = $output . "<pre style=\"background-color:white;\">".htmlentities(print_r($this,1))."</pre>";
 	}*/
 }
